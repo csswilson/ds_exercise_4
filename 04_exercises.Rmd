@@ -12,7 +12,7 @@ output:
 
 
 ```{r setup, include=FALSE}
-#knitr::opts_chunk$set(echo = TRUE, error=TRUE, message=FALSE, warning=FALSE)
+knitr::opts_chunk$set(echo = TRUE, error=TRUE, message=FALSE, warning=FALSE)
 ```
 
 ```{r libraries}
@@ -208,7 +208,7 @@ starbucks_with_2018_pop_est %>%
                fill = starbucks_per_10000)) +
   expand_limits(x = states_map$long, y = states_map$lat) + 
   theme_map() +
-  labs(title = "Number of Starbucks per 10,000 People by U.S State", fill = "Starbucks") +
+  labs(title = "Number of Starbucks per 10,000 People by U.S State", fill = "Starbucks", Caption = "Created by Claire Wilson") +
    viridis::scale_fill_viridis(option="magma", direction = -1)
 ```
 
@@ -301,11 +301,6 @@ bikes <- Trips %>%
   count() %>% 
   left_join(Stations, by = c("sstation" = "name"))
 
-  #ggplot(aes(x = long, y = lat)) +
-  geom_point(aes(col = n), alpha = 0.75) +
-  scale_color_continuous(low = "pink", high = "maroon4") +
-  labs(title = "Total Number of Bike Departures in Space", col = "Departures")
-
 DC <- get_stamenmap(
     bbox = c(left = -77.4, bottom = 38.75, right = -76.8, top =39.15), 
     maptype = 'toner-hybrid',
@@ -318,7 +313,6 @@ ggmap(DC) +
              size = 1) +
   theme_map() +
   labs(title = "Total Number of Bike Departures in Washington DC", col = "Departures") +
-  #scale_color_continuous(low = "pink", high = "maroon4")
   viridis::scale_color_viridis( direction = -1)
 ```
   
@@ -339,7 +333,9 @@ bike_percents <- Trips %>%
   labs(title = "Proportion of Bike Departures by Clients in Space", col = "Departures") +
   viridis::scale_color_viridis(direction = -1)
 ```
-  
+
+In this plot, I can see patterns that a larger number of departures occur close to the city, with in the city, and in the suburbs. This is likely because people from outside the city rent bikes to commute into work and then rent bikes to ride out of the city and back to the suburbs. This is most of the bike rental traffic. There are a couple more specific renting hubs. 
+
 ### COVID-19 data
 
 The following exercises will use the COVID-19 data from the NYT.
@@ -390,6 +386,32 @@ Now it appears that controlled for the population, Montana and Rhode Island had 
   
   13. **CHALLENGE** Choose 4 dates spread over the time period of the data and create the same map as in exercise 12 for each of the dates. Display the four graphs together using faceting. What do you notice?
   
+```{r}
+
+covid_2018_extra <-
+  covid19 %>% 
+  mutate(state = str_to_lower(state)) %>% 
+  filter(date == '2022-03-09' | date == '2020-09-02'
+        | date == '2021-03-25' | date == '2021-09-22') %>% 
+  left_join(census_pop_est_2018, by = 'state') %>% 
+  mutate(cases_per_10000 = (cases/est_pop_2018)*10000)
+  
+
+covid_2018_extra %>% 
+  ggplot() +
+  geom_map(map = states_map,
+           aes(map_id = state,
+               fill = cases_per_10000)) +
+  expand_limits(x = states_map$long, y = states_map$lat) +
+  theme_map() + 
+  facet_wrap(~date) +
+  labs(title = "Number of Covid Cases per 10,000 People in the US Over Time", fill = "Cases per 10,000") +
+  viridis::scale_fill_viridis(option="magma", direction = -1) +
+  theme(legend.background = element_blank())
+```
+
+I notice more cases over time! Trends seem quite similar over time, just at different magnitudes.
+
 ## Minneapolis police stops
 
 These exercises use the datasets `MplsStops` and `MplsDemo` from the `carData` library. Search for them in Help to find out more information.
@@ -434,18 +456,67 @@ leaflet(data = MplsStops) %>%
 ```{r}
 mpls_nbhd <- st_read("Minneapolis_Neighborhoods/Minneapolis_Neighborhoods.shp", quiet = TRUE)
 
-mpls_nbhd %>% 
-  full_join(mpls_suspicious, by = c('neighborhood' = ))
+mpls_all <- mpls_nbhd %>% 
+  full_join(mpls_suspicious, by = c("BDNAME" = 'neighborhood')) %>% 
+  full_join(MplsDemo, by = c("BDNAME" = 'neighborhood'))
 ```
 
   17. Use `leaflet` to create a map from the `mpls_all` data  that colors the neighborhoods by `prop_suspicious`. Display the neighborhood name as you scroll over it. Describe what you observe in the map.
   
+```{r}
+pal <- colorNumeric("magma", reverse = TRUE, 
+                     domain =  mpls_all$prop_sus_stops)
+
+leaflet(data = mpls_all) %>% 
+  addProviderTiles(providers$CartoDB.DarkMatter) %>% #base map - default is openstreet map 
+  addPolygons(
+             label = ~BDNAME, 
+             opacity = 1,
+             fillOpacity = 0.7,
+             stroke = FALSE,
+             color = ~pal(prop_sus_stops),
+             ) %>% 
+  addLegend(pal = pal, 
+            values = ~prop_sus_stops, 
+            title = "Proportion of Suspicious Stops",
+            position = "bottomright")
+```
+
+It appears that the largest proportion of stops for suspicious behavior, occur in South East Minneapolis, while North Minneapolis experiences mostly traffic stops. This could be becuse one area is more comprised of neighborhoods what the other has more traffic and highways. 
+
   18. Use `leaflet` to create a map of your own choosing. Come up with a question you want to try to answer and use the map to help answer that question. Describe what your map shows. 
   
+My question is: Where do the most stops occur, proportional to population size?
+  
+```{r}
+q18 <- mpls_all %>% 
+  mutate(stops_per_person = stops_per_hood / population)
+
+pal <- colorNumeric("inferno", reverse = TRUE, 
+                     domain =  q18$stops_per_person)
+
+leaflet(data = q18) %>% 
+  addProviderTiles(providers$CartoDB.DarkMatter) %>% #base map - default is openstreet map 
+  addPolygons(
+             label = ~BDNAME, 
+             opacity = 1,
+             fillOpacity = 0.7,
+             stroke = FALSE,
+             color = ~pal(stops_per_person),
+             ) %>% 
+  addLegend(pal = pal, 
+            values = ~stops_per_person, 
+            title = "Stops per Person",
+            position = "bottomright")
+```
+
+The highest number of stops that occur relative to the population, occur in Downtown West and Nicollet Island. Comparing this map to the map above, the stops in Downtown West are majority suspicious stops while the stops in Nicollet Island are mostly traffic related. These numbers are quite interesting also, because in these two locations, there was almost one stop that occured per person living in that area, relative to population size. It is a factor though that people travel and especially people receiving a traffic stop, are likely not from the neighborhood. 
   
 ## GitHub link
 
   19. Below, provide a link to your GitHub page with this set of Weekly Exercises. Specifically, if the name of the file is 04_exercises.Rmd, provide a link to the 04_exercises.md file, which is the one that will be most readable on GitHub.
+  
+[Exercise 4 Repository](https://github.com/csswilson/ds_exercise_4.git)
 
 
 **DID YOU REMEMBER TO UNCOMMENT THE OPTIONS AT THE TOP?**
